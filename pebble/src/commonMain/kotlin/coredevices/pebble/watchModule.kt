@@ -15,6 +15,7 @@ import coredevices.pebble.account.RealBootConfigProvider
 import coredevices.pebble.account.RealFirestoreKnownWatchesSync
 import coredevices.pebble.account.RealFirestoreLocker
 import coredevices.pebble.account.RealPebbleAccount
+import coredevices.pebble.backlight.BacklightColorScheduleSyncer
 import coredevices.pebble.firmware.Cohorts
 import coredevices.pebble.firmware.FirmwareUpdateCheck
 import coredevices.pebble.firmware.FirmwareUpdateUiTracker
@@ -76,6 +77,8 @@ import io.rebble.libpebblecommon.connection.NotificationApps
 import io.rebble.libpebblecommon.connection.TokenProvider
 import io.rebble.libpebblecommon.connection.WebServices
 import io.rebble.libpebblecommon.js.InjectedPKJSHttpInterceptors
+import io.rebble.libpebblecommon.time.TimeChanged
+import io.rebble.libpebblecommon.time.createTimeChanged
 import io.rebble.libpebblecommon.util.SystemGeolocation
 import io.rebble.libpebblecommon.voice.TranscriptionProvider
 import io.rebble.libpebblecommon.web.LockerEntry
@@ -123,7 +126,9 @@ val watchModule = module {
         }
     } } bind PebbleAccountProvider::class
     singleOf(::PebbleAppDelegate)
+    singleOf(::BacklightColorScheduleSyncer)
     singleOf(::RealFirmwareUpdateUiTracker) bind FirmwareUpdateUiTracker::class
+    single<TimeChanged> { createTimeChanged(get()) }
     factory<Clock> { Clock.System }
     singleOf(::RealPebbleAccount) bind PebbleAccount::class
     single { FirestoreLockerDao { get() } }
