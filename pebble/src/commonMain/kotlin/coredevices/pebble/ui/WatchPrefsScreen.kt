@@ -1,23 +1,28 @@
 package coredevices.pebble.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coredevices.pebble.backlight.BacklightColorScheduleSyncer
 import coredevices.pebble.rememberLibPebble
 import coredevices.ui.ConfirmDialog
 import io.rebble.libpebblecommon.SystemAppIDs.AIRPLANE_MODE_UUID
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 import io.rebble.libpebblecommon.SystemAppIDs.BACKLIGHT_UUID
 import io.rebble.libpebblecommon.SystemAppIDs.HEALTH_APP_UUID
 import io.rebble.libpebblecommon.SystemAppIDs.MOTION_BACKLIGHT_UUID
@@ -35,9 +40,13 @@ import io.rebble.libpebblecommon.database.entity.QuicklaunchWatchPref
 import io.rebble.libpebblecommon.database.entity.RgbColorWatchPref
 import io.rebble.libpebblecommon.database.entity.WatchPref
 import io.rebble.libpebblecommon.database.entity.WatchPrefEnum
+import io.rebble.libpebblecommon.database.entity.isBacklightColorScheduleHelperPref
 import io.rebble.libpebblecommon.locker.AppType
 import io.rebble.libpebblecommon.timeline.TimelineColor
 import kotlinx.coroutines.flow.map
+import org.koin.compose.koinInject
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
 // Snap the notification timeout slider to 30-second increments (20 stops across 0..600s)
@@ -45,18 +54,42 @@ import kotlin.uuid.Uuid
 private const val NOTIFICATION_TIMEOUT_STEP_COUNT = 19
 
 @Composable
-fun watchPrefs(): List<SettingsItem> {
+fun watchPrefs(
+    hasDayNightBacklightSupport: Boolean,
+): List<SettingsItem> {
     val libPebble = rememberLibPebble()
+    val backlightColorScheduleSyncer: BacklightColorScheduleSyncer = koinInject()
     val settings by libPebble.watchPrefs.collectAsState(emptyList())
     val quickLaunchOptions = quickLaunchOptions(libPebble)
-    val mapped = remember(settings, quickLaunchOptions) {
-        settings.map { item ->
+    val mapped = remember(
+        settings,
+        quickLaunchOptions,
+        hasDayNightBacklightSupport,
+        backlightColorScheduleSyncer,
+    ) {
+        val settingsByPref = settings.associateBy { it.pref }
+        settings.mapNotNull { item ->
+            if (item.pref.isBacklightColorScheduleHelperPref()) {
+                return@mapNotNull null
+            }
             when (val pref = item.pref) {
                 is BoolWatchPref -> booleanPref(pref.castParent(item), libPebble)
                 is EnumWatchPref -> enumPref(pref.castParent(item), libPebble)
                 is QuicklaunchWatchPref -> quicklaunchPref(pref.castParent(item), libPebble, quickLaunchOptions)
                 is ColorWatchPref -> colorPref(pref.castParent(item), libPebble)
-                is RgbColorWatchPref -> rgbColorPref(pref.castParent(item), libPebble)
+                is RgbColorWatchPref -> {
+                    if (pref == RgbColorWatchPref.BacklightColor && hasDayNightBacklightSupport) {
+                        backlightColorCompositePref(
+                            dayColor = preference(settingsByPref, RgbColorWatchPref.BacklightColor),
+                            nightColor = preference(settingsByPref, RgbColorWatchPref.BacklightColorNight),
+                            enabled = preference(settingsByPref, BoolWatchPref.BacklightColorDayNightEnabled),
+                            libPebble = libPebble,
+                            backlightColorScheduleSyncer = backlightColorScheduleSyncer,
+                        )
+                    } else {
+                        rgbColorPref(pref.castParent(item), libPebble)
+                    }
+                }
                 is NumberWatchPref -> numberPref(pref.castParent(item), libPebble)
             }
         }
@@ -97,6 +130,7 @@ fun WatchPref<*>.section(): Section = when (this) {
     BoolWatchPref.Backlight -> Section.Display
     BoolWatchPref.AmbientLightSensor -> Section.Display
     BoolWatchPref.BacklightMotion -> Section.Display
+    BoolWatchPref.BacklightColorDayNightEnabled -> Section.Display
     BoolWatchPref.DynamicBacklightIntensity -> Section.Display
     BoolWatchPref.LanguageEnglish -> Section.Other
 //    ColorWatchPref.SettingsMenuHighlightColor -> Section.Display
@@ -106,9 +140,12 @@ fun WatchPref<*>.section(): Section = when (this) {
     EnumWatchPref.BacklightIntensity -> Section.Display
     EnumWatchPref.BacklightTouch -> Section.Display
     RgbColorWatchPref.BacklightColor -> Section.Display
+    RgbColorWatchPref.BacklightColorNight -> Section.Display
     NumberWatchPref.BacklightTimeoutMs -> Section.Display
     NumberWatchPref.AmbientLightThreshold -> Section.Display
     NumberWatchPref.DynamicBacklightMinThreshold -> Section.Display
+    NumberWatchPref.BacklightColorSunriseMinute -> Section.Display
+    NumberWatchPref.BacklightColorSunsetMinute -> Section.Display
     QuicklaunchWatchPref.QlUp -> Section.QuickLaunch
     QuicklaunchWatchPref.QlDown -> Section.QuickLaunch
     QuicklaunchWatchPref.QlComboBackUp -> Section.QuickLaunch
@@ -137,6 +174,14 @@ fun WatchPref<*>.section(): Section = when (this) {
     BoolWatchPref.QuietTimeMotionBacklight -> Section.QuietTime
     BoolWatchPref.MusicShowVolumeControls -> Section.Music
     BoolWatchPref.MusicShowProgressBar -> Section.Music
+}
+
+private fun <T> preference(
+    settingsByPref: Map<WatchPref<*>, WatchPreference<*>>,
+    pref: WatchPref<T>,
+): WatchPreference<T> {
+    val item = settingsByPref[pref] ?: return WatchPreference(pref, null)
+    return pref.castParent(item)
 }
 
 private fun numberPref(item: WatchPreference<Long>, libPebble: LibPebble): SettingsItem {
@@ -301,6 +346,95 @@ private fun rgbColorPref(item: WatchPreference<UInt>, libPebble: LibPebble): Set
             )
         },
         isDebugSetting = pref.isDebugSetting,
+    )
+}
+
+private fun backlightColorCompositePref(
+    dayColor: WatchPreference<UInt>,
+    nightColor: WatchPreference<UInt>,
+    enabled: WatchPreference<Boolean>,
+    libPebble: LibPebble,
+    backlightColorScheduleSyncer: BacklightColorScheduleSyncer,
+): SettingsItem {
+    val dayPref = dayColor.pref as RgbColorWatchPref
+    val nightPref = nightColor.pref as RgbColorWatchPref
+    val isEnabled = enabled.valueOrDefault()
+    return SettingsItem(
+        id = dayPref.id,
+        title = dayPref.displayName,
+        topLevelType = TopLevelType.Watch,
+        section = Section.Display,
+        item = {
+            ListItem(
+                headlineContent = { Text("Backlight Color") },
+                supportingContent = {
+                    Column {
+                        Text(
+                            "LED color used when the backlight is on, unless over-ridden by an app.",
+                            fontSize = 11.sp,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = isEnabled,
+                                onCheckedChange = { checked ->
+                                    if (checked) {
+                                        backlightColorScheduleSyncer.enableDayNightColorInBackground()
+                                    } else {
+                                        backlightColorScheduleSyncer.disableDayNightColor()
+                                    }
+                                },
+                            )
+                            Text(
+                                BoolWatchPref.BacklightColorDayNightEnabled.displayName,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        if (isEnabled) {
+                            SelectRgbColor(
+                                currentRgb = dayColor.valueOrDefault(),
+                                defaultRgb = dayPref.defaultValue,
+                                presets = dayPref.presets,
+                                label = "Day",
+                                onChangeColor = { rgb ->
+                                    libPebble.setWatchPref(dayColor.copy(value = rgb))
+                                },
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            SelectRgbColor(
+                                currentRgb = nightColor.valueOrDefault(),
+                                defaultRgb = nightPref.defaultValue,
+                                presets = nightPref.presets,
+                                label = "Night",
+                                onChangeColor = { rgb ->
+                                    libPebble.setWatchPref(nightColor.copy(value = rgb))
+                                },
+                            )
+                        } else {
+                            SelectRgbColor(
+                                currentRgb = dayColor.valueOrDefault(),
+                                defaultRgb = dayPref.defaultValue,
+                                presets = dayPref.presets,
+                                label = "Color",
+                                onChangeColor = { rgb ->
+                                    libPebble.setWatchPref(dayColor.copy(value = rgb))
+                                },
+                            )
+                        }
+                    }
+                },
+            )
+        },
+        isDebugSetting = dayPref.isDebugSetting,
+        onDisplayed = {
+            LaunchedEffect(isEnabled) {
+                if (isEnabled) {
+                    backlightColorScheduleSyncer.refreshIfEnabled("display-settings-opened")
+                }
+            }
+        },
     )
 }
 

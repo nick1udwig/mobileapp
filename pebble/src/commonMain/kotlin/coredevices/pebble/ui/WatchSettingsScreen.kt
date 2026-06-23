@@ -477,7 +477,16 @@ fun rememberSettingsItemsState(navBarNav: NavBarNav?, snackbarDisplay: SnackbarD
             )
         }
     }
-    val watchPrefs = watchPrefs()
+    val anyWatchSupportsBacklightColorSchedule = remember(watchesCastable) {
+        watchesCastable.any {
+            it is KnownPebbleDevice && it.capabilities.contains(
+                ProtocolCapsFlag.SupportsBacklightColorSchedule
+            )
+        }
+    }
+    val watchPrefs = watchPrefs(
+        hasDayNightBacklightSupport = anyWatchSupportsBacklightColorSchedule
+    )
     val coreAnalytics: CoreAnalytics = koinInject()
     val platformHealthSync: PlatformHealthSync = koinInject()
     val healthSyncTracker: HealthSyncTracker = koinInject()
