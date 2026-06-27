@@ -218,7 +218,7 @@ enum class BoolWatchPref(
     BacklightMotion("lightMotion", "Backlight Motion", true, description = "Turn on backlight by flicking wrist"),
     BacklightColorDayNightEnabled(
         id = "lightColorDayNightEnabled",
-        displayName = "Change Backlight Color during day or night",
+        displayName = "Change Backlight Color at night",
         defaultValue = false,
         description = null,
     ),

@@ -8,7 +8,6 @@ import coredevices.analytics.heartbeatWatchConnectedName
 import coredevices.database.WeatherLocationDao
 import coredevices.database.insertDefaultWeatherLocationOnce
 import coredevices.firestore.UsersDao
-import coredevices.pebble.backlight.BacklightColorScheduleSyncer
 import coredevices.pebble.firmware.FirmwareUpdateUiTracker
 import coredevices.pebble.services.AppstoreSourceInitializer
 import coredevices.pebble.services.AnalyticsHeartbeatQueue
@@ -59,7 +58,6 @@ class PebbleAppDelegate(
     private val memfaultChunkQueue: MemfaultChunkQueue,
     private val analyticsHeartbeatQueue: AnalyticsHeartbeatQueue,
     private val pebbleWebServices: PebbleWebServices,
-    private val backlightColorScheduleSyncer: BacklightColorScheduleSyncer,
 ) {
     private val logger = Logger.withTag("PebbleAppDelegate")
 
@@ -90,7 +88,6 @@ class PebbleAppDelegate(
                 // libPebble.init() ran synchronously above. Kick off post-permission work now.
                 libPebble.doStuffAfterPermissionsGranted()
             }
-            backlightColorScheduleSyncer.init()
             GlobalScope.launch {
                 usersDao.loginEvents.collect {
                     pebbleWebServices.fetchUserHearts()
