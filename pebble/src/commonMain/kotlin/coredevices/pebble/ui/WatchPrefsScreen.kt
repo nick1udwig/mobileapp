@@ -488,6 +488,11 @@ private fun WeatherScheduleCheckbox(
     } else {
         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
     }
+    val label = if (enabled) {
+        "Use local sunrise and sunset"
+    } else {
+        "Use local sunrise and sunset (requires Weather enabled in Settings)"
+    }
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -498,7 +503,7 @@ private fun WeatherScheduleCheckbox(
             onCheckedChange = onCheckedChange,
         )
         Text(
-            "Use weather sunrise and sunset",
+            label,
             color = contentColor,
             modifier = Modifier.weight(1f),
         )
